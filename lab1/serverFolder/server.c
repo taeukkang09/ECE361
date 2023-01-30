@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
     int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
 
     //Bind socket to address
-    if(bind(sock_fd, &server_addr, sizeof(server_addr)) < 0) {
+    if(bind(sock_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         perror("Error binding socket: ");
         exit(1);
     }
@@ -38,16 +38,16 @@ int main(int argc, char* argv[]) {
     struct sockaddr_in client_addr;             //Create client address structure
     socklen_t client_addr_len = sizeof(client_addr);
     
-    int bytes_received = recvfrom(sock_fd, buffer, sizeof(buffer), 0, &client_addr, &client_addr_len);
+    int bytes_received = recvfrom(sock_fd, buffer, sizeof(buffer), 0, (struct sockaddr *) &client_addr, &client_addr_len);
     if(bytes_received < 0) {
         perror("Error receiving message: ");
         exit(1);
     }
 
     if(strcmp(buffer, "ftp") == 0) {
-        sendto(sock_fd, "yes", sizeof("yes"), 0, &client_addr, client_addr_len);
+        sendto(sock_fd, "yes", sizeof("yes"), 0, (struct sockaddr *) &client_addr, client_addr_len);
     }
     else{
-        sendto(sock_fd, "no", sizeof("no"), 0, &client_addr, client_addr_len);
+        sendto(sock_fd, "no", sizeof("no"), 0, (struct sockaddr *) &client_addr, client_addr_len);
     }  
 }
