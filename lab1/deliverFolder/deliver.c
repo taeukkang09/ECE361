@@ -63,8 +63,8 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(server_port);
-    if (inet_aton(server_address, &server_addr.sin_addr) == 0) {
+    server_addr.sin_port = htons(server_port); // Converts IP address from host byte order -> network byte order.
+    if (inet_aton(server_address, &server_addr.sin_addr) == 0) { // Converts dot-notation server address into binary form. 
         printf("Invalid server address.\n");
         close(sock_fd);
         exit(1);
@@ -89,9 +89,9 @@ int main(int argc, char *argv[]) {
 
     // Print appropriate message based on server response
     if (strcmp(response, "yes") == 0) {
-        printf("A file transfer can start.\n");
+        printf("File transfer started.\n");
     } else {
-        printf("Server did not accept request. Exiting...\n");
+        printf("File transfrer rejected by server.\n");
     }
 
     close(sock_fd);
