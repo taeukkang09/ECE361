@@ -8,8 +8,18 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <stdio.h>
+#include <time.h>
 
 #define MAX_LEN 512
+#define PACKET_LEN 1000
+
+struct packet{
+    unsigned int total_frag;
+    unsigned int frag_no;
+    unsigned int size;
+    char filename[1000];
+    char filedata[1000];
+};
 
 int main(int argc, char *argv[]) {
     // Check if proper number of arguments passed in.
@@ -24,6 +34,7 @@ int main(int argc, char *argv[]) {
 
     char input[MAX_LEN];
     char filename[MAX_LEN];
+    struct packet packet;
 
     // Read filename from user input.
     printf("Enter the name of file to transfer(ftp <filename>): ");
@@ -50,6 +61,10 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
+    strcpy(packet.filename, filename);
+    // packet.filename = filename;
+    printf("Filename: %s\n", packet.filename);
+
     // Creates a UDP socket. 
     // AF_INET = IPv4 Internet Protocols, SOCK_DGRAM = UDP sockets, the protocol identifier is 0 for UDP.
     int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -69,30 +84,73 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    // Send "ftp" message to server
-    char message[] = "ftp";
-    if (sendto(sock_fd, message, strlen(message), 0, (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0) {
-        perror("Error sending message: ");
+    char packet_buf[4096];
+
+    // Open the file in read mode.
+    FILE *file = fopen(packet.filename, "rb");
+    if (file == NULL) {
+        perror("Error opening file: ");
         close(sock_fd);
         exit(1);
     }
 
-    // Receive response from server
-    char response[MAX_LEN];
+    // Gets the file size.
+    fseek(file, 0, SEEK_END); // SEEK_END points to the end of file. 
+    int file_size = ftell(file); // ftell() returns the current file position. 
+    rewind(file); 
+
+    // Calculate number of fragments required to send the file
+    packet.total_frag = file_size / 1000 + 1;
+    packet.frag_no = 1;
+    char buf[100];
     socklen_t server_addr_len = sizeof(server_addr);
-    if (recvfrom(sock_fd, response, MAX_LEN, 0, (struct sockaddr *) &server_addr, &server_addr_len) < 0) {
-        perror("Error receiving message");
-        close(sock_fd);
-        exit(1);
+
+    // Start timer.
+    clock_t start, end;
+    start = clock();
+    double duration;
+
+    while((packet.size = fread(packet.filedata, sizeof(char), PACKET_LEN, file))) {
+        // Convert packet struct to string
+        unsigned int len = sprintf(packet_buf, "%d:%d:%d:%s:", packet.total_frag, packet.frag_no, packet.size, packet.filename);
+
+        for(int i = len; i < packet.size + len; i++){
+            packet_buf[i] = packet.filedata[i - len];
+        }
+
+        if (sendto(sock_fd, packet_buf, packet.size + len, 0, (struct sockaddr*)&server_addr, server_addr_len) == -1) {
+            printf("Error sending filedata 1.\n");
+        }
+
+        while(1) {
+            int response_len = recvfrom(sock_fd, buf, 100, 0, (struct sockaddr *) &server_addr, &server_addr_len);
+            if (response_len > 0) {   
+                buf[response_len] = '\0';
+                char frag_no_buf[100];
+                sprintf(frag_no_buf, "%d", packet.frag_no);
+                if (strcmp(buf, frag_no_buf) == 0) { // Server sends frag_no if ACK.
+                    printf("Package transfer successful.\n");
+                } else { // Server sends NACK.
+                    printf("%s\n", buf);
+                }
+                if(atoi(frag_no_buf) == 1){
+                    end = clock();
+                    duration = ((double)end - start) * 1000 /CLOCKS_PER_SEC;
+                }
+                break;
+            } else {
+                if (sendto(sock_fd, packet_buf, packet.size + len, 0, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
+                    printf("Error sending filedata 2.\n");
+                }
+            }
+        }
+        packet.frag_no += 1;
     }
 
-    // Print appropriate message based on server response
-    if (strcmp(response, "yes") == 0) {
-        printf("File transfer started.\n");
-    } else {
-        printf("File transfrer rejected by server.\n");
-    }
-
+    
+    printf("RTT: %.3f ms.\n", duration);
+        
     close(sock_fd);
+    fclose(file);
     return 0;
 }
