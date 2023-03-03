@@ -18,6 +18,13 @@ struct packet{
     char filedata[1000];
 };
 
+double uniform_rand(){
+    /*
+    Generates a uniformly distributed random number between 0 and 1
+    */
+    return (rand() % 100)/100;
+}
+
 void parse_packet(struct packet *packet, char* data){
     /*
     Parses packet read into data into packet
@@ -56,7 +63,7 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
-    //Read in packet, send ack or nack, repe
+    //Read in packet, send ack or drop, repeat
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(atoi(argv[1]));
@@ -90,11 +97,12 @@ int main(int argc, char* argv[]) {
     while(cur_frag < total_frag){
         //Read and check for errors
         if(recvfrom(sock_fd, buffer, sizeof(buffer), 0, (struct sockaddr *) &client_addr, &client_addr_len) < 0) {
-            //Send NACK
-            sendto(sock_fd, "NACK", sizeof("NACK"), 0, (struct sockaddr *) &client_addr, client_addr_len);
-            int err = errno;
-            perror("sending NACK");
-            exit(err);
+            continue;
+        }
+        //Determine whether to drop the packet or not
+        if(uniform_rand() < 1e-2){
+            printf("DROPPING PACKET\n");
+            continue;
         }
 
         //Determine which packet number this is
@@ -108,11 +116,6 @@ int main(int argc, char* argv[]) {
         total_frag = packet_arr[atoi(ptr)].total_frag;
         cur_frag ++;    //ASSUMING NO REPEATED PACKETS
 
-        if(atoi(ptr) == 1){
-            //Setup with user read/write/execute access, write, create, and overwrite mode.
-            fd = open(packet_arr[atoi(ptr)].filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU);
-        }   
-
         //Send ACK
         sprintf(buffer, "%d", packet_arr[atoi(ptr)].frag_no);
         if(sendto(sock_fd, buffer, strlen(buffer), 0, (struct sockaddr *) &client_addr, client_addr_len) == -1){
@@ -121,6 +124,9 @@ int main(int argc, char* argv[]) {
             exit(err);
         };
     }
+
+    //Setup with user read/write/execute access, write, create, and overwrite mode.
+    fd = open(packet_arr[1].filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU);
 
     //Write to fd
     for(cur_frag = 1; cur_frag <= total_frag; cur_frag++){
